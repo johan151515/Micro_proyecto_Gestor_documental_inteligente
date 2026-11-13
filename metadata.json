@@ -1,0 +1,6 @@
+{
+  "name": "DocuMind Enterprise",
+  "description": "Enterprise document verification, intelligent OCR parsing, and AI narrative synthesis workbench.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
