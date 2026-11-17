@@ -1,0 +1,183 @@
+# Especificación de Requisitos de Software (SRS)
+## Gestor Documental Inteligente
+
+---
+
+## Tabla de Contenido
+
+* **1. Introducción**
+  * 1.1 Planteamiento del Problema
+  * 1.2 Propósito
+  * 1.3 Justificación
+  * 1.4 Objetivo General
+    * 1.4.1 Objetivos Específicos
+  * 1.5 Alcance del Proyecto
+  * 1.6 Problemáticas que Soluciona
+    * 1.6.1 Invisibilidad del Dato y Pérdida de Tiempo
+    * 1.6.2 Silos de Información y Toma de Decisiones
+    * 1.6.3 Seguridad, Control de Acceso y Trazabilidad
+  * 1.7 Propuesta de Solución
+  * 1.8 Pipeline de Ingesta, Extracción (OCR) y Síntesis IA
+    * 1.8.1 Funciones del Pipeline
+    * Ejemplo de Funcionamiento (Happy Path)
+  * 1.9 Tecnologías
+    * Para el Backend y Base de Datos
+    * Para el Frontend SPA y Procesamiento IA
+  * 1.10 Beneficios y Métricas de Éxito (KPIs)
+  * 1.11 Personal Involucrado y Perfiles de Usuario
+  * 1.12 Definiciones, Acrónimos y Abreviaturas
+  * 1.13 Referencias
+  * 1.14 Resumen
+* **2. Descripción General**
+  * 2.1 Perspectiva del Producto y Arquitectura
+  * 2.2 Características de los Usuarios (RBAC)
+  * 2.3 Restricciones y Exclusiones (El "No")
+  * 2.4 Suposiciones, Dependencias y Despliegue
+* **3. Requisitos Específicos**
+  * 3.1 Requisitos Comunes de las Interfaces
+    * 3.1.1 Interfaces de Usuario (UI States & Entry Points)
+    * 3.1.2 Interfaces de Hardware e Infraestructura
+    * 3.1.3 Interfaces de Software y Modelo de Datos
+    * 3.1.4 Interfaces de Comunicación y API REST
+  * 3.3 Requerimientos Funcionales (HU y CU)
+  * 3.4 Requerimientos No Funcionales
+
+---
+
+## 1. Introducción
+
+### 1.1 Planteamiento del Problema
+Las organizaciones acumulan miles de documentos no estructurados (facturas escaneadas, contratos, actas, licitaciones, órdenes de compra y reportes en PDF e imágenes) distribuidos en repositorios locales o carpetas compartidas sin indexación semántica ni léxica. Esta situación genera tres fricciones operativas críticas:
+
+* **Invisibilidad del dato y pérdida de tiempo:** Los colaboradores dedican entre 20 y 40 minutos al día buscando archivos cuyo contenido textual no está indexado, dependiendo de memorizar nombres de archivo genéricos (ej. `scan_001.pdf`).
+* **Silos de información e ineficiencia en la toma de decisiones:** Documentos clave no son consultados porque el costo temporal de leerlos o extraer sus puntos centrales es prohibitivo para equipos que gestionan alto volumen operativo.
+* **Riesgo de seguridad y trazabilidad nula:** El almacenamiento no controlado carece de control granular de acceso por roles (RBAC), registros de auditoría inmutables y políticas de integridad (hashes SHA-256), exponiendo a la entidad a fugas de información o incumplimientos regulatorios.
+
+### 1.2 Propósito
+El propósito de esta Especificación de Requisitos de Software (SRS) es definir de manera formal, determinista y accionable los requisitos funcionales, no funcionales, arquitectura de software, modelo de datos, contratos de API, flujos de usuario y puertas de calidad para el desarrollo del **Gestor Documental Inteligente**.
+
+Este documento establece el marco técnico y de negocio entre el validador humano (Product Owner / Arquitecto), los desarrolladores y los agentes de implementación, evitando la sobre-arquitectura, el *vendor lock-in* y las ambigüedades funcionales durante las 5 fases o hitos secuenciales de construcción.
+
+### 1.3 Justificación
+La construcción del Gestor Documental Inteligente se justifica en el impacto directo sobre la productividad operativa y la gobernanza documental:
+
+* **Ingesta inteligente y sin fricción:** Convierte automáticamente cualquier archivo escaneado (PNG, JPEG, PDF escaneado) o PDF digital nativo en texto indexable en el momento de la carga mediante tareas asíncronas en segundo plano.
+* **Comprensión instantánea (Time-to-Insight):** Proporciona síntesis ejecutivas estructuradas generadas por IA (modelos de lenguaje) bajo demanda, eliminando la necesidad de leer documentos extensos para evaluar su relevancia.
+* **Búsqueda profunda sub-segundo:** Permite localizar cualquier documento en menos de 500 ms buscando fragmentos exactos dentro de su cuerpo de texto mediante búsqueda de texto completo (*Full-Text Search*) nativa en PostgreSQL con índices GIN.
+* **Gobernanza y control empresarial:** Garantiza aislamiento de permisos por rol (`Admin`, `Editor`, `Viewer`), sanitización de rutas mediante `UUIDv4` y trazabilidad completa *append-only* de cada acción realizada sobre el patrimonio documental.
+
+### 1.4 Objetivo General
+Diseñar y desarrollar un repositorio documental centralizado, seguro y escalable bajo una arquitectura de **Monolito Modular Asíncrono** con Python, FastAPI, PostgreSQL 15+ y React, que transforme archivos estáticos y no estructurados (PDF, PNG, JPEG) en información accionable mediante extracción automática de texto (PyMuPDF / Tesseract OCR), búsqueda léxica indexada y generación de resúmenes ejecutivos estructurados con IA.
+
+#### 1.4.1 Objetivos Específicos
+1. Implementar un módulo de autenticación y control de acceso basado en roles (RBAC) con JWT (`HS256`) y contraseñas cifradas con `bcrypt` (coste $\ge 12$) para los perfiles `Admin`, `Editor` y `Viewer`.
+2. Desarrollar un pipeline de ingesta segura con validación binaria (*magic bytes*), límite de 25 MB, cálculo de integridad SHA-256 y renombrado estricto en almacenamiento con `UUIDv4`.
+3. Construir un motor de extracción de texto asíncrono en segundo plano (`FastAPI BackgroundTasks`) que combine `PyMuPDF` para PDFs digitales y `Tesseract OCR` para escaneos e imágenes (tope de 100 páginas).
+4. Implementar búsqueda de texto completo (*Full-Text Search*) en español en PostgreSQL utilizando vectores léxicos (`tsvector`), triggers PL/pgSQL nativos, índices GIN y ranking de relevancia (`ts_rank`).
+5. Integrar un servicio de síntesis ejecutiva mediante cliente HTTP asíncrono (`httpx`) hacia endpoints compatibles con OpenAI API, forzando respuestas JSON estructuradas validadas con Pydantic v2 e idempotencia en base de datos.
+6. Establecer un módulo de clasificación por categorías N:M y una bitácora de auditoría inmutable (*append-only*) protegida mediante reglas SQL nativas en PostgreSQL.
+
+### 1.5 Alcance del Proyecto
+El alcance funcional y técnico del producto se delimita en los siguientes componentes:
+
+* **Módulos Incluidos en el MVP (Fase 1):** Módulo de Usuarios y Accesos (JWT/RBAC), Módulo de Categorías (taxonomía plana N:M), Módulo de Documentos (carga multipart, metadatos, descarga streaming segura, *soft-delete*), Módulo de Inteligencia Artificial (extracción OCR/parser en segundo plano y generación de resúmenes estructurados), Módulo de Búsqueda Full-Text y Módulo de Auditoría Inmutable.
+* **Exclusiones Explícitas (Out of Scope):** Edición o anotación de archivos PDF/imágenes dentro de la plataforma; control de versiones de documentos (VCS documental); procesamiento de audio o video; sincronización bidireccional con nubes externas (Google Drive, Dropbox, OneDrive); purga física definitiva (*hard-delete*) y categorías jerárquicas multinivel (postergados a Fases 2 y 3).
+
+### 1.6 Problemáticas que Soluciona
+
+#### 1.6.1 Invisibilidad del Dato y Pérdida de Tiempo
+Elimina la dependencia de recordar nombres de archivos genéricos o navegar por carpetas anidadas. Al indexar automáticamente el contenido textual extraído mediante OCR y parsers digitales en vectores léxicos de PostgreSQL, cualquier palabra, cláusula, número de factura o radicado se vuelve localizable en milisegundos.
+
+#### 1.6.2 Silos de Información y Toma de Decisiones
+Reduce el tiempo de revisión preliminar de contratos, actas e informes técnicos extensos. Los líderes de área y tomadores de decisión pueden generar bajo demanda una síntesis ejecutiva estructurada (resumen ejecutivo, puntos clave e idioma detectado) sin tener que descargar y leer el documento completo.
+
+#### 1.6.3 Seguridad, Control de Acceso y Trazabilidad
+Sustituye carpetas compartidas abiertas y sin control por un repositorio gobernado con aislamiento RBAC, descarga autenticada por streaming (sin URLs públicas estáticas), verificación de firma binaria (*magic bytes*) contra malware disfrazado y registro inmutable de auditoría de cada carga, descarga, resumen o eliminación.
+
+### 1.7 Propuesta de Solución
+La solución se diseña bajo el patrón arquitectural de **Monolito Modular Asíncrono**. El backend en Python 3.11+ y FastAPI se organiza en dominios desacoplados (`auth`, `documents`, `categories`, `search`, `ai`, `audit`) respaldados por PostgreSQL 15+ con el driver asíncrono `asyncpg` y almacenamiento de objetos compatible con S3/MinIO o volumen local persistente.
+
+El frontend es una Single Page Application (SPA) limpia en React 18+, TypeScript, Vite y Tailwind CSS que aplica la regla del **"Cliente Limpio"**: ninguna llave de API de IA ni credencial de almacenamiento se expone en el navegador; el backend actúa como custodio exclusivo de los secretos mediante `Pydantic Settings` y Docker Secrets.
+
+### 1.8 Pipeline de Ingesta, Extracción (OCR) y Síntesis IA
+El núcleo operativo del sistema es el pipeline asíncrono de ingesta y procesamiento documental, diseñado para responder de inmediato al usuario sin bloquear el ciclo de vida HTTP.
+
+#### 1.8.1 Funciones del Pipeline
+* **Validación y Sanitización:** Validación de tamaño ($\le 25\text{ MB}$) y firma binaria real (*magic numbers*) para aceptar exclusivamente `application/pdf`, `image/png` e `image/jpeg`.
+* **Custodia e Integridad:** Cálculo de hash SHA-256 para integridad y persistencia en almacenamiento físico bajo nombre anonimizado `{uuid4}.{ext}` para evitar *Path Traversal*.
+* **Extracción Híbrida Asíncrona:** Ejecución controlada en segundo plano (máximo 3 workers simultáneos y límite de 1.5 GB RAM) combinando `PyMuPDF` (PDF digital) y `Tesseract OCR` + `Pillow` (imágenes y escaneos hasta 100 páginas).
+* **Indexación Léxica Automática:** Actualización automática de `search_vector` mediante trigger PL/pgSQL en español ponderando título (peso `A`) y contenido (peso `B`).
+* **Síntesis Ejecutiva Estructurada:** Llamada bajo demanda a endpoint OpenAI-compatible con timeout de 30 segundos y validación estricta de esquema JSON (`DocumentSummarySchema`).
+
+#### Ejemplo de Funcionamiento (Happy Path)
+1. **Paso 1 (Acceso):** Un usuario `Editor` inicia sesión en `/login` y es redirigido automáticamente a su bandeja en `/documents`.
+2. **Paso 2 (Ingesta):** Arrastra `contrato_arrendamiento.pdf` (8 MB) a la zona Drag & Drop. El backend valida *magic bytes*, calcula SHA-256, guarda como `UUIDv4` y responde `HTTP 202 Accepted` en $< 150\text{ ms}$ con estado `pending`.
+3. **Paso 3 (Monitoreo):** La tabla muestra la fila con badge ámbar `pending`. El worker inicia (badge azul `processing`), aplica `PyMuPDF`/`Tesseract OCR` y finaliza en estado verde `completed` en 6.4 segundos.
+4. **Paso 4 (Consulta y Búsqueda):** El usuario abre el visor lateral (Drawer) para leer el texto extraído y busca `"cláusula penal"` en `/search` obteniendo coincidencia resaltada en $< 500\text{ ms}$.
+5. **Paso 5 (Síntesis IA):** Pulsa *"Generar Resumen IA"*. El backend invoca el LLM mediante `httpx`, valida el JSON con Pydantic y renderiza en pantalla el resumen ejecutivo, los puntos clave y el idioma detectado (`'es'`).
+
+### 1.9 Tecnologías
+
+#### Para el Backend y Base de Datos
+* **Lenguaje y Framework:** Python 3.11+ con FastAPI (0.110+) sobre servidor ASGI Uvicorn con `asyncio` nativo.
+* **Validación y Configuración:** Pydantic v2 (`ConfigDict` con `extra='forbid'`, validadores deterministas y `pydantic-settings`).
+* **Base de Datos y Búsqueda:** PostgreSQL 15+ con índices GIN, vectores léxicos `tsvector` (diccionario `'spanish'`) y triggers/reglas PL/pgSQL.
+* **ORM y Migraciones:** SQLAlchemy 2.0 en modo asíncrono con driver `asyncpg` y migraciones versionadas con Alembic.
+* **Seguridad y Criptografía:** `passlib` con `bcrypt` (coste $\ge 12$) y `python-jose` / `pyjwt` para tokens JWT (`HS256`).
+
+#### Para el Frontend SPA y Procesamiento IA
+* **Frontend Web:** React 18+, TypeScript, Vite, Tailwind CSS, Lucide React y generación de contratos con `openapi-typescript`.
+* **Extracción y OCR:** `PyMuPDF` (`fitz`) para PDFs digitales nativos; `pytesseract` + Tesseract OCR v5 + `Pillow` (`PIL`) para imágenes y PDFs escaneados.
+* **Cliente LLM:** `httpx` (`AsyncClient` con timeout de 30s) hacia API LLM estándar OpenAI-compatible (OpenAI, Groq o Ollama/vLLM local).
+* **Despliegue y Observabilidad:** Docker Compose con Caddy / Nginx (TLS automático), contenedor FastAPI, PostgreSQL 15 y MinIO (S3 compatible), más Sentry y `structlog`.
+
+### 1.10 Beneficios y Métricas de Éxito (KPIs)
+* **KPI 1 - Eficiencia de Búsqueda:** Reducción del Tiempo Medio de Localización Documental (MTTD) en $\ge 70\%$ frente al baseline manual (de 15–20 min a $< 1\text{ min}$).
+* **KPI 2 - Fiabilidad de Ingesta:** Tasa de éxito en extracción OCR $\ge 95\%$ de documentos procesados a estado `COMPLETED` sin intervención manual.
+* **KPI 3 - Tracción de IA:** Adopción de resúmenes IA (*Time-to-Insight*) $\ge 60\%$ de usuarios recurrentes consultando la síntesis antes de descargar el archivo completo.
+* **KPI 4 - Rendimiento de Consulta:** Latencia p95 en endpoints de búsqueda $< 500\text{ ms}$ con carga de hasta $100.000$ registros utilizando índices GIN.
+
+### 1.11 Personal Involucrado y Perfiles de Usuario
+A continuación se detallan los perfiles operativos de usuarios finales que interactúan con el sistema:
+
+| Perfil / Rol | Área Operativa | Contexto de Uso y Beneficio Directo |
+|---|---|---|
+| **Analistas y Operativos (Rol Editor)** | Finanzas, Contabilidad, Legal, Compras | Gestionan facturas, contratos, actas y órdenes de compra en PDF/imagen. Eliminan transcripción manual mediante OCR y localizan cláusulas por búsqueda textual profunda. |
+| **Líderes y Tomadores de Decisión (Rol Editor / Viewer)** | Coordinaciones y Direcciones de Área | Evalúan rápidamente informes técnicos extensos y contratos mediante síntesis ejecutivas generadas por IA bajo demanda, reduciendo horas de lectura a minutos. |
+| **Oficiales de Cumplimiento y TI (Rol Admin)** | Auditoría Interna, Seguridad y TI | Monitorean accesos, gestionan usuarios/roles y auditan la integridad del repositorio mediante la bitácora inmutable (`audit_logs`) sin alterar la operación diaria. |
+
+### 1.12 Definiciones, Acrónimos y Abreviaturas
+* **Append-Only:** Política de persistencia en base de datos que permite únicamente operaciones de inserción (`INSERT`), bloqueando actualizaciones (`UPDATE`) y borrados (`DELETE`).
+* **Bcrypt:** Función criptográfica de derivación de claves con salting adaptativo utilizada para almacenar contraseñas de forma segura.
+* **FastAPI:** Framework web moderno y asíncrono de alto rendimiento para Python basado en estándares OpenAPI y Pydantic.
+* **Full-Text Search (FTS):** Técnica de búsqueda léxica profunda sobre el contenido textual completo de los documentos indexados.
+* **GIN (Generalized Inverted Index):** Índice invertido generalizado de PostgreSQL optimizado para acelerar consultas sobre vectores léxicos (`tsvector`).
+* **JWT (JSON Web Token):** Estándar abierto (RFC 7519) para la transmisión segura de identidad y claims de rol entre cliente y servidor.
+* **LLM (Large Language Model):** Modelo de lenguaje de gran escala empleado para generar resúmenes ejecutivos estructurados a partir del texto extraído.
+* **Magic Bytes / Magic Numbers:** Secuencia de bytes iniciales de un archivo que identifica su formato binario real independientemente de su extensión.
+* **MVP (Minimum Viable Product):** Producto Mínimo Viable que contiene el núcleo esencial de capacidades funcionales para aportar valor inmediato.
+* **OCR (Optical Character Recognition):** Reconocimiento Óptico de Caracteres aplicado mediante Tesseract para extraer texto de imágenes y PDFs escaneados.
+* **Path Traversal:** Vulnerabilidad de seguridad que permite acceder a directorios restringidos manipulando rutas de nombres de archivo.
+* **RBAC (Role-Based Access Control):** Control de acceso basado en roles (`Admin`, `Editor`, `Viewer`).
+* **Soft-Delete:** Eliminación lógica de registros mediante una bandera booleana (`is_deleted = true`) sin destruir el registro físico.
+* **SRS (Software Requirements Specification):** Documento formal de Especificación de Requisitos de Software.
+* **TSVECTOR / TSQUERY:** Tipos de datos nativos de PostgreSQL para representar documentos normalizados en lexemas y ejecutar consultas de texto completo.
+
+### 1.13 Referencias
+1. Especificación de Requisitos y Arquitectura del Gestor Documental Inteligente (Sesiones de diseño y PRD/TRD del proyecto).
+2. ISO/IEC/IEEE 29148:2018 - *Systems and software engineering — Life cycle processes — Requirements engineering*.
+3. RFC 7519 - *JSON Web Token (JWT)*, Internet Engineering Task Force (IETF).
+4. Documentación Oficial de FastAPI: https://fastapi.tiangolo.com/
+5. Documentación Oficial de PostgreSQL 15 (Full-Text Search & GIN Indexes): https://www.postgresql.org/docs/15/textsearch.html
+6. Documentación Oficial de Pydantic v2: https://docs.pydantic.dev/latest/
+7. Documentación Oficial de PyMuPDF (`fitz`) y Tesseract OCR.
+
+### 1.14 Resumen
+Este documento especifica integralmente el **Gestor Documental Inteligente**. La Sección 2 detalla la arquitectura de Monolito Modular Asíncrono, la matriz de permisos RBAC (`Admin`, `Editor`, `Viewer`), las restricciones técnicas, la lista de componentes congelados (*Freeze List*) y el entorno de despliegue en Docker Compose. La Sección 3 establece las interfaces de usuario (incluyendo estados de carga, vacío y error), las interfaces de software y modelo de datos relacional en PostgreSQL, los contratos de la API REST, las Historias de Usuario (`HU01` a `HU12`) con sus respectivos Casos de Uso (`CU01` a `CU06`), y los Requerimientos No Funcionales de seguridad, rendimiento, observabilidad y calidad.
+
+---
+
+## 2. Descripción General
+
+### 2.1 Perspectiva del Producto y Arquitectura
+El Gestor Documental Inteligente es una plataforma web autocontenida que opera bajo una arquitectura de **Monolito Modular Asíncrono**. El frontend SPA (React + Vite + TypeScript) se comunica exclusivamente vía HTTPS/JSON y Multipart con la API REST de FastAPI, la cual actúa como Backend-for-Frontend (BFF) y custodio único de credenciales.
